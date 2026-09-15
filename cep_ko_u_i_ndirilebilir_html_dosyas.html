@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cep Koşu</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://www.youtube.com">
+<link rel="preconnect" href="https://i.ytimg.com">
+<link rel="dns-prefetch" href="https://www.google.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400;62..125,700;62..125,900&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+  :root{--moss:#10201A;--moss2:#1B3328;--stone:#D8CCAA;--gold:#E8B64C;--jade:#4CC795;--warn:#E86A4C}
+  *{box-sizing:border-box}
+  html,body{margin:0;min-height:100%;background:var(--moss);color:var(--stone);font-family:Archivo,system-ui,sans-serif}
+  button,input{font:inherit}
+  button{background:var(--gold);color:var(--moss);border:0;border-radius:14px;padding:14px 20px;font-weight:700;cursor:pointer}
+  button.ghost{background:transparent;color:var(--stone);border:2px solid var(--moss2)}
+  button:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid var(--jade);outline-offset:3px}
+  input{width:100%;background:var(--moss2);color:var(--stone);border:2px solid transparent;border-radius:12px;padding:14px}
+  .screen{display:none;min-height:100vh;padding:26px 22px;max-width:640px;margin:0 auto;flex-direction:column;gap:14px;justify-content:center}
+  .screen.on{display:flex}
+  .screen.top{justify-content:flex-start}
+  .screen.stage{padding:0;max-width:none;justify-content:flex-start;gap:0}
+  h1{font-stretch:125%;font-weight:900;font-size:clamp(40px,10vw,80px);line-height:.9;margin:0;color:var(--gold)}
+  h2{font-stretch:125%;font-weight:900;font-size:32px;line-height:1;margin:0;color:var(--gold)}
+  p{line-height:1.5;margin:0;max-width:60ch}
+  .muted{opacity:.72;font-size:.93em}
+  .label{font-weight:700;margin-top:6px}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  .row>button{flex:1}
+  .col{display:flex;flex-direction:column;gap:12px}
+  .seg{display:flex;gap:6px;flex-wrap:wrap}
+  .seg button{flex:1;background:var(--moss2);color:var(--stone);padding:10px 6px;font-size:13px}
+  .seg button.on{background:var(--gold);color:var(--moss)}
+  .recent{display:flex;flex-direction:column;gap:8px}
+  .recent-item{display:flex;gap:8px;align-items:center}
+  .recent-item button{flex:1;background:var(--moss2);color:var(--stone);text-align:left;font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .recent-item .del{flex:0 0 auto;background:var(--moss2);color:var(--warn);padding:12px 14px;border-radius:12px}
+  .taps{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
+  .taps button{padding:8px 2px;font-size:11.5px;border-radius:10px}
+  .taps.big button{padding:16px 2px;font-size:13px}
+  .last{font-stretch:125%;font-weight:900;font-size:38px;line-height:1;color:var(--jade);min-height:38px;text-align:center}
+  .counts{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;text-align:center}
+  .counts b{display:block;font-stretch:125%;font-weight:900;font-size:24px;color:var(--gold)}
+  .counts span{font-size:11px;opacity:.75}
+  .status{font-weight:700}
+  .status.ok{color:var(--jade)} .status.bad{color:var(--warn)}
+  details summary{cursor:pointer;font-weight:700;padding:4px 0}
+  input[type=range]{padding:0;accent-color:var(--gold)}
+  .pctl{padding:10px 14px 20px;display:flex;flex-direction:column;gap:10px;max-width:640px;margin:0 auto;width:100%}
+
+  /* Mod Seçim Kartları */
+  .mode-card{background:var(--moss2);border:1px solid rgba(232,182,76,.25);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:10px}
+  .mode-card.highlight{border-color:var(--gold);background:rgba(27,51,40,.9)}
+  .mode-title{font-size:17px;font-weight:900;color:var(--gold);display:flex;align-items:center;gap:8px}
+  .mode-desc{font-size:13.5px;line-height:1.45;opacity:.88}
+  .mode-steps{display:flex;flex-direction:column;gap:6px;font-size:13px;background:rgba(16,32,26,.6);padding:10px 12px;border-radius:10px;border-left:3px solid var(--jade)}
+  .mode-steps span b{color:var(--gold)}
+
+  /* Kalibrasyon / Isınma Kartı */
+  .calib-card{background:var(--moss2);border-radius:18px;padding:22px 18px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;border:1px solid rgba(232,182,76,.35);box-shadow:0 12px 28px rgba(0,0,0,.3)}
+  .calib-badge{background:var(--gold);color:var(--moss);font-size:11px;font-weight:900;padding:4px 12px;border-radius:99px;letter-spacing:.05em}
+  .calib-icon{font-size:56px;line-height:1;margin:4px 0;filter:drop-shadow(0 4px 12px rgba(0,0,0,.4))}
+  .calib-title{font-size:26px;font-weight:900;color:var(--gold);line-height:1.1}
+  .calib-desc{font-size:14.5px;line-height:1.4;opacity:.9}
+  .calib-progress{width:100%;height:8px;background:rgba(216,204,170,.18);border-radius:99px;overflow:hidden;margin-top:6px}
+  .calib-bar{height:100%;width:0%;background:var(--jade);transition:width .3s ease}
+  .calib-sub{font-size:14.5px;color:var(--jade);font-weight:900;min-height:24px}
+
+  /* Video ekranı (Sabit görünüm) */
+  .view{position:relative;overflow:hidden;background:#000;--u:1vw}
+  .view.tv{position:fixed;inset:0}
+  .view.mobile{width:100%;aspect-ratio:16/9;container-type:inline-size;--u:1cqw}
+  .view .cam{position:absolute;inset:0}
+  .view .cam iframe{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;border:0}
+  .view .overlay{position:absolute;inset:0;display:none;place-items:center;text-align:center;background:rgba(16,32,26,.6);padding:calc(var(--u)*4);z-index:4}
+  .view .ov-text{font-stretch:125%;font-weight:900;font-size:calc(var(--u)*6)}
+  .view .msg{background:rgba(16,32,26,.88);z-index:5}
+  .view .msg-text{font-stretch:125%;font-weight:900;font-size:calc(var(--u)*5);line-height:1.1;max-width:85%;margin:0 auto}
+  .view .msg-num{font-stretch:125%;font-weight:900;font-size:calc(var(--u)*12);color:var(--gold);line-height:1}
+  .view .flash{position:absolute;inset:0;opacity:0;pointer-events:none;background:#fff;z-index:6}
+
+  /* Üst HUD: Canlar, Hız Çarpanı, Skor */
+  .view .hudTop
