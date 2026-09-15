@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cep Koşu</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400;62..125,700;62..125,900&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+  :root{--moss:#10201A;--moss2:#1B3328;--stone:#D8CCAA;--gold:#E8B64C;--jade:#4CC795;--warn:#E86A4C}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--moss);color:var(--stone);font-family:Archivo,system-ui,sans-serif}
+  button,input{font:inherit}
+  button{background:var(--gold);color:var(--moss);border:0;border-radius:14px;padding:16px 22px;font-weight:700;cursor:pointer}
+  button.ghost{background:transparent;color:var(--stone);border:2px solid var(--moss2)}
+  button:focus-visible,input:focus-visible{outline:3px solid var(--jade);outline-offset:3px}
+  input{width:100%;background:var(--moss2);color:var(--stone);border:2px solid transparent;border-radius:12px;padding:16px}
+  .screen{display:none;min-height:100%;padding:28px;max-width:640px;margin:0 auto;flex-direction:column;gap:18px;justify-content:center}
+  .screen.on{display:flex}
+  h1{font-stretch:125%;font-weight:900;font-size:clamp(44px,11vw,88px);line-height:.9;margin:0;color:var(--gold)}
+  p{line-height:1.5;margin:0;max-width:60ch}
+  .muted{opacity:.7;font-size:.95em}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .row>button{flex:1}
+
+  /* TV */
+  #stage{position:fixed;inset:0;background:#000;overflow:hidden;display:none}
+  #stage.on{display:block}
+  #cam{position:absolute;inset:0;will-change:transform,filter}
+  #cam iframe,#player{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+  #code{position:absolute;right:3vw;bottom:3vw;text-align:right;background:rgba(16,32,26,.85);padding:1.4vw 2vw;border-radius:1.4vw}
+  #code b{display:block;font-stretch:125%;font-weight:900;font-size:7vw;line-height:1;color:var(--gold);letter-spacing:.08em}
+  #code span{font-size:1.6vw}
+  #hud{position:absolute;left:3vw;top:3vw;font-size:1.8vw;background:rgba(16,32,26,.7);padding:.8vw 1.4vw;border-radius:1vw;display:none}
+  .overlay{position:absolute;inset:0;display:none;place-items:center;text-align:center;background:rgba(16,32,26,.6)}
+  #idle{font-stretch:125%;font-weight:900;font-size:6vw}
+  #calBox{background:rgba(16,32,26,.88)}
+  #calText{font-stretch:125%;font-weight:900;font-size:5.5vw;line-height:1.05;max-width:80vw}
+  #calNum{font-stretch:125%;font-weight:900;font-size:12vw;color:var(--gold);line-height:1}
+  #flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+
+  /* Telefon */
+  .meter{height:14px;background:var(--moss2);border-radius:7px;overflow:hidden;position:relative}
+  .meter i{position:absolute;top:0;bottom:0;background:var(--jade)}
+  .big{font-stretch:125%;font-weight:900;font-size:52px;line-height:1;color:var(--gold)}
+  .status{font-weight:700}
+  .status.ok{color:var(--jade)} .status.bad{color:var(--warn)}
+  input[type=range]{padding:0;accent-color:var(--gold)}
+  #pocket{position:fixed;inset:0;background:#000;color:#555;display:none;place-items:end center;padding-bottom:40px;z-index:9;touch-action:none;user-select:none;-webkit-user-select:none}
+  @media (prefers-reduced-motion:reduce){#flash{display:none}}
+</style>
+</head>
+<body>
+
+<section class="screen on" id="home">
+  <h1>Cep<br>Koşu</h1>
+  <p>Video TV'de oynar, telefon cebinde kumanda olur. Zıplarsın, eğilirsin, sağa sola yatarsın; görüntü de seninle hareket eder.</p>
+  <div class="row">
+    <button id="goTv">Bu cihaz TV ekranı</button>
+    <button class="ghost" id="goPhone">Bu cihaz cebimdeki telefon</button>
+  </div>
+</section>
+
+<section class="screen" id="tvSetup">
+  <h1>TV</h1>
+  <p>YouTube video linkini yapıştır. Yerleştirmeye (embed) kapalı videolar oynamaz.</p>
+  <input id="ytUrl" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off">
+  <label class="row" style="align-items:center;gap:10px"><input type="checkbox" id="autoPause" checked style="width:auto"> Koşmayı bırakınca video dursun</label>
+  <button id="startTv">Videoyu aç</button>
+  <p class="muted">Klavyeyle test: Boşluk zıpla, S basılı çömel, A/D basılı yana yat, ←/→ dön, ↑ adım.</p>
+</section>
+
+<div id="stage">
+  <div id="cam"><div id="player"></div></div>
+  <div class="overlay" id="idle">Koşmaya başla</div>
+  <div class="overlay" id="calBox"><div><div id="calNum"></div><div id="calText"></div></div></div>
+  <div id="flash"></div>
+  <div id="hud"></div>
+  <div id="code"><span>Telefonda bu kodu gir</span><b id="codeNum">-----</b></div>
+</div>
+
+<section class="screen" id="phone">
+  <h1>Kumanda</h1>
+  <p id="phoneIntro">Telefon ile TV aynı Wi‑Fi'da olsun. TV ekranındaki kodu gir.</p>
+  <div id="joinBox" style="display:flex;flex-direction:column;gap:14px">
+    <input id="joinCode" inputmode="numeric" maxlength="5" placeholder="5 haneli kod">
+    <button id="connectBtn">Bağlan</button>
+  </div>
+  <p class="status" id="pStatus">Bağlı değil</p>
+  <div id="live" style="display:none;flex-direction:column;gap:14px">
+    <button id="calBtn">Kalibre et ve cebe koy</button>
+    <p class="muted">Talimatlar TV ekranında çıkar, telefon her adımda titrer.</p>
+    <div class="row" style="justify-content:space-between">
+      <div><div class="big" id="jumps">0</div><span class="muted">zıplama</span></div>
+      <div><div class="big" id="steps">0</div><span class="muted">adım</span></div>
+      <div><div class="big" id="turns">0</div><span class="muted">dönüş</span></div>
+    </div>
+    <span class="muted">Yana yatma</span><div class="meter"><i id="leanBar"></i></div>
+    <span class="muted">Çömelme</span><div class="meter"><i id="crouchBar"></i></div>
+    <label>Zıplama hassasiyeti <span id="sensVal"></span>
+      <input type="range" id="sens" min="70" max="220" value="120">
+    </label>
+    <p class="muted">Koşarken yanlışlıkla zıplama sayıyorsa kaydırıcıyı sağa al.</p>
+    <div class="row">
+      <button class="ghost" id="testJump">Test zıpla</button>
+      <button class="ghost" id="pocketBtn">Cep modu</button>
+    </div>
+  </div>
+</section>
+
+<div id="pocket">Çıkmak için 2 saniye basılı tut</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const show = id => { document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on')); if(id) $(id).classList.add('on'); };
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+const PREFIX = 'ceprun-v2-';
+$('goTv').onclick = () => show('tvSetup');
+$('goPhone').onclick = () => show('phone');
+
+/* ======================= TV ======================= */
+let player, ready = false, autoPause = true, lastActivity = 0, stepTimes = [];
+let y=0, vy=0, x=0, vx=0, roll=0, crouchO=0, shake=0, zoom=0, vz=0, blurUntil=0;
+let leanT=0, crouchT=0, calTimer;
+
+function ytId(url){
+  const m = url.match(/(?:youtu\.be\/|v=|shorts\/|embed\/|live\/)([\w-]{11})/);
+  return m ? m[1] : (/^[\w-]{11}$/.test(url.trim()) ? url.trim() : null);
+}
+
+$('startTv').onclick = () => {
+  const id = ytId($('ytUrl').value);
+  if(!id){ $('ytUrl').style.borderColor='var(--warn)'; $('ytUrl').focus(); return; }
+  autoPause = $('autoPause').checked;
+  show(null); $('stage').classList.add('on');
+  document.documentElement.requestFullscreen?.().catch(()=>{});
+  loadYT(id); openRoom(); requestAnimationFrame(tick);
+  addEventListener('keydown', e => {
+    if(e.repeat) return;
+    if(e.code==='Space'){ e.preventDefault(); onEvent({t:'takeoff'}); setTimeout(()=>onEvent({t:'land',force:1.2}),420); }
+    if(e.code==='ArrowUp') onEvent({t:'step'});
+    if(e.code==='ArrowLeft') onEvent({t:'turn',dir:'left'});
+    if(e.code==='ArrowRight') onEvent({t:'turn',dir:'right'});
+    if(e.code==='KeyA') leanT=-1; if(e.code==='KeyD') leanT=1; if(e.code==='KeyS') crouchT=1;
+  });
+  addEventListener('keyup', e => {
+    if(e.code==='KeyA'||e.code==='KeyD') leanT=0; if(e.code==='KeyS') crouchT=0;
+  });
+};
+
+function loadYT(id){
+  window.onYouTubeIframeAPIReady = () => {
+    player = new YT.Player('player', {
+      videoId:id,
+      playerVars:{autoplay:1,controls:0,rel:0,modestbranding:1,playsinline:1,disablekb:1,iv_load_policy:3},
+      events:{
+        onReady: () => { ready = true; player.playVideo();
+          if(autoPause) setTimeout(()=>{ if(Date.now()-lastActivity>1500){ player.pauseVideo(); idle(true); } },800); },
+        onError: () => { idle(true, 'Bu video yerleştirmeye kapalı olabilir'); }
+      }
+    });
+  };
+  const s = document.createElement('script'); s.src='https://www.youtube.com/iframe_api'; document.head.appendChild(s);
+}
+
+function idle(on, txt){ $('idle').textContent = txt || 'Koşmaya başla'; $('idle').style.display = on ? 'grid' : 'none'; }
+
+function openRoom(){
+  const code = String(Math.floor(10000 + Math.random()*90000));
+  const peer = new Peer(PREFIX + code);
+  peer.on('open', () => { $('codeNum').textContent = code; });
+  peer.on('error', err => { if(err.type==='unavailable-id'){ peer.destroy(); openRoom(); } else hud('Bağlantı hatası: '+err.type); });
+  peer.on('connection', conn => {
+    conn.on('open', () => { $('code').style.display='none'; hud('Telefon bağlandı'); });
+    conn.on('data', onEvent);
+    conn.on('close', () => { $('code').style.display='block'; leanT=0; crouchT=0; hud('Telefon ayrıldı'); });
+  });
+}
+
+let hudTimer;
+function hud(txt){ const h=$('hud'); h.textContent=txt; h.style.display='block'; clearTimeout(hudTimer); hudTimer=setTimeout(()=>h.style.display='none',2500); }
+
+function onEvent(ev){
+  const H = innerHeight, W = innerWidth;
+  switch(ev.t){
+    case 'takeoff': vy += H*1.6; vz -= .4; activity(); break;          // kamera yükselir, görüntü aşağı kayar
+    case 'land': {
+      const f = clamp(ev.force||1, .6, 2);
+      vy -= H*1.3*f; shake = Math.min(1,.45*f); vz += .4*f; activity();
+      const fl=$('flash'); fl.style.transition='none'; fl.style.opacity=.1*f;
+      requestAnimationFrame(()=>{ fl.style.transition='opacity .25s'; fl.style.opacity=0; });
+      break; }
+    case 'step': vy -= H*.1; stepTimes.push(Date.now()); activity(); break;
+    case 'turn': vx += (ev.dir==='right' ? -1 : 1) * W*4.5; blurUntil = performance.now()+180; activity(); break;
+    case 'pose': leanT = clamp(ev.lean||0,-1.5,1.5); crouchT = ev.crouch ? 1 : 0; break;
+    case 'cal':
+      clearInterval(calTimer);
+      $('calBox').style.display = ev.done && !ev.text ? 'none' : 'grid';
+      $('calText').textContent = ev.text || '';
+      let n = ev.sec||0; $('calNum').textContent = n>0 ? n : '';
+      if(n>0) calTimer = setInterval(()=>{ n--; $('calNum').textContent = n>0 ? n : ''; if(n<=0) clearInterval(calTimer); },1000);
+      if(ev.done) setTimeout(()=>{ $('calBox').style.display='none'; }, 1800);
+      break;
+  }
+}
+
+function activity(){
+  lastActivity = Date.now(); idle(false);
+  if(ready && player.getPlayerState() !== YT.PlayerState.PLAYING) player.playVideo();
+}
+
+let prev = performance.now(), lastRateCheck = 0;
+function tick(now){
+  const dt = Math.min(.05,(now-prev)/1000); prev = now;
+  const H = innerHeight, W = innerWidth;
+  // Dikey: zıplama / adım / iniş (yay-sönüm)
+  vy += (-60*y - 11*vy)*dt; y += vy*dt; y = clamp(y,-H*.1,H*.1);
+  // Yatay: yana yatma hedefi + dönüş savruluşu
+  const tx = -leanT * W*.06;
+  vx += (-45*(x-tx) - 10*vx)*dt; x += vx*dt; x = clamp(x,-W*.16,W*.16);
+  roll += ((-leanT*4) - roll) * Math.min(1, dt*6);
+  // Çömelme: kamera iner, görüntü yukarı kayar ve yakınlaşır
+  crouchO += (crouchT - crouchO) * Math.min(1, dt*8);
+  vz += (-80*zoom - 14*vz)*dt; zoom += vz*dt;
+  shake *= Math.pow(.02, dt);
+  const sx=(Math.random()-.5)*shake*H*.03, sy=(Math.random()-.5)*shake*H*.03;
+  const ty = clamp(y - crouchO*H*.09, -H*.16, H*.16);
+  const scale = 1.35 + clamp(zoom*.15,-.05,.12) + crouchO*.06;
+  const cam = $('cam');
+  cam.style.transform = `translate3d(${x+sx}px,${ty+sy}px,0) rotate(${roll}deg) scale(${scale})`;
+  cam.style.filter = now < blurUntil ? 'blur(6px)' : 'none';
+
+  if(ready && now-lastRateCheck > 1000){
+    lastRateCheck = now;
+    const t = Date.now();
+    stepTimes = stepTimes.filter(s => t-s < 4000);
+    const spm = stepTimes.length*15;
+    const rate = spm===0 ? 1 : [0.75,1,1.25,1.5].reduce((a,b)=>Math.abs(b-spm/160)<Math.abs(a-spm/160)?b:a);
+    if(player.getPlaybackRate && player.getPlaybackRate()!==rate) player.setPlaybackRate(rate);
+    if(autoPause && t-lastActivity>3000 && player.getPlayerState()===YT.PlayerState.PLAYING){ player.pauseVideo(); idle(true); }
+  }
+  requestAnimationFrame(tick);
+}
+
+/* ======================= TELEFON ======================= */
+let conn, jumps=0, steps=0, turns=0, sensorOn=false, calibrating=false;
+let cal=null, calSamples=null, yawRec=null, yawLP=0, lastTurn=0, crouching=false, crouchSince=0;
+const gs=[0,0,9.81];
+const norm = v => { const l=Math.hypot(...v)||1; return v.map(c=>c/l); };
+const dot = (a,b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const perp = (v,u) => { const d=dot(v,u); return norm([v[0]-d*u[0], v[1]-d*u[1], v[2]-d*u[2]]); };
+const angleToward = (v,u,dir) => Math.atan2(dot(v,dir), dot(v,u));
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+const buzz = p => navigator.vibrate?.(p);
+
+const sens=$('sens'); const setSens=()=>$('sensVal').textContent=sens.value+' ms'; sens.oninput=setSens; setSens();
+function status(txt,cls){ const s=$('pStatus'); s.textContent=txt; s.className='status '+(cls||''); }
+function send(ev){ if(calibrating && ev.t!=='cal') return; if(conn && conn.open) conn.send(ev); }
+
+let wakeLock;
+async function keepAwake(){ try{ wakeLock = await navigator.wakeLock?.request('screen'); }catch(e){} }
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible' && sensorOn) keepAwake(); });
+
+$('connectBtn').onclick = async () => {
+  const code = $('joinCode').value.trim();
+  if(!/^\d{5}$/.test(code)){ status('Kod 5 haneli olmalı','bad'); return; }
+  if(!window.isSecureContext){ status('Sensör için sayfa HTTPS linkiyle açılmalı','bad'); return; }
+  if(typeof DeviceMotionEvent!=='undefined' && typeof DeviceMotionEvent.requestPermission==='function'){
+    try{ if(await DeviceMotionEvent.requestPermission()!=='granted'){ status('Sensör izni verilmedi','bad'); return; } }
+    catch(e){ status('Sensör izni alınamadı','bad'); return; }
+  }
+  keepAwake();
+  status('Bağlanıyor…');
+  const me = new Peer();
+  me.on('open', () => {
+    conn = me.connect(PREFIX+code, {reliable:false});
+    conn.on('open', () => { status("TV'ye bağlandı. Şimdi kalibre et.",'ok'); $('joinBox').style.display='none'; $('phoneIntro').style.display='none'; $('live').style.display='flex'; });
+    conn.on('close', () => status('Bağlantı koptu','bad'));
+  });
+  me.on('error', e => status(e.type==='peer-unavailable' ? 'Bu kodla TV bulunamadı' : 'Hata: '+e.type, 'bad'));
+  if(!sensorOn) startSensor();
+};
+
+$('testJump').onclick = () => { send({t:'takeoff'}); setTimeout(()=>send({t:'land',force:1.2}),420); };
+
+/* Cep modu: siyah ekran, cepteki yanlış dokunuşları yutar */
+let holdTimer;
+function pocket(on){ $('pocket').style.display = on ? 'grid' : 'none'; if(on) document.documentElement.requestFullscreen?.().catch(()=>{}); }
+$('pocketBtn').onclick = () => pocket(true);
+$('pocket').addEventListener('pointerdown', e => { e.preventDefault(); holdTimer=setTimeout(()=>pocket(false),2000); });
+['pointerup','pointercancel','pointerleave'].forEach(t => $('pocket').addEventListener(t, ()=>clearTimeout(holdTimer)));
+
+async function tvSay(text, sec, extra){ send({t:'cal', text, sec, ...extra}); buzz(250); await sleep(sec*1000); }
+async function recordAvg(text, sec){
+  send({t:'cal', text, sec}); buzz(250);
+  await sleep(1200); calSamples=[]; await sleep(sec*1000-1200);
+  const s=calSamples; calSamples=null;
+  return [0,1,2].map(i => s.reduce((a,v)=>a+v[i],0)/Math.max(1,s.length));
+}
+
+$('calBtn').onclick = async () => {
+  if(calibrating) return;
+  calibrating = true; cal = null; pocket(true);
+  const say = (t,s) => { conn?.open && conn.send({t:'cal',text:t,sec:s}); buzz(250); return sleep(s*1000); };
+  const rec = async (t,s) => { conn?.open && conn.send({t:'cal',text:t,sec:s}); buzz(250); await sleep(1200); calSamples=[]; await sleep(s*1000-1200); const a=calSamples; calSamples=null; return [0,1,2].map(i=>a.reduce((p,v)=>p+v[i],0)/Math.max(1,a.length)); };
+
+  await say("Telefonu cebine koy ve TV'ye dön", 7);
+  const g0 = await rec('Dik dur, kıpırdama', 3);
+  const gR = await rec('Sağa yat ve öyle kal', 3);
+  await say('Dik dur', 2);
+  const gC = await rec('Çömel ve öyle kal', 3);
+  await say('Dik dur', 2);
+  conn?.open && conn.send({t:'cal',text:'Hızlıca sağa dön',sec:3}); buzz(250);
+  yawRec = {peak:0}; await sleep(3000); const peak = yawRec.peak; yawRec = null;
+
+  const u0=norm(g0), rn=norm(gR), cn=norm(gC);
+  const rDir=perp(rn,u0), cDir=perp(cn,u0);
+  const thR=angleToward(rn,u0,rDir), thC=angleToward(cn,u0,cDir);
+  let msg = 'Hazır! Koşmaya başla';
+  if(thR < .08 || thC < .2){ msg = 'Hareket algılanamadı. Telefondan tekrar kalibre et.'; }
+  else cal = { u0, rDir, cDir, thR, thC, yawSign: Math.sign(peak)||1, yawThr: Math.abs(peak)>0 ? Math.abs(peak)*.55 : Infinity };
+  if(cal && cal.yawThr===Infinity) msg = 'Hazır! (Bu telefonda dönüş sensörü yok)';
+  calibrating = false;
+  conn?.open && conn.send({t:'cal', text: msg, sec:0, done:true});
+  buzz([100,80,100]);
+};
+
+function startSensor(){
+  sensorOn = true;
+  let state='ground', lowSince=0, takeoffAt=0, lastStep=0;
+  addEventListener('devicemotion', e => {
+    const a = e.accelerationIncludingGravity; if(!a || a.x===null) return;
+    const g=[a.x,a.y,a.z], m=Math.hypot(...g), now=performance.now();
+    for(let i=0;i<3;i++) gs[i] += .06*(g[i]-gs[i]);     // yavaş filtre: koşu sallantısını süzer
+    if(calSamples) calSamples.push([...gs]);
+
+    // Zıplama ve adım
+    if(state==='ground'){
+      if(m < 4){
+        if(!lowSince) lowSince=now;
+        if(now-lowSince >= +sens.value){ state='air'; takeoffAt=lowSince; send({t:'takeoff'}); }
+      } else {
+        lowSince=0;
+        if(m>14 && now-lastStep>280){ lastStep=now; steps++; $('steps').textContent=steps; send({t:'step'}); }
+      }
+    } else if(m>14 || now-takeoffAt>1500){
+      const air=now-takeoffAt; state='ground'; lowSince=0; lastStep=now;
+      jumps++; $('jumps').textContent=jumps;
+      send({t:'land', force: clamp(air/350,.6,2)});
+    }
+
+    // Dönüş: dikey eksen etrafındaki dönme hızı (jiroskop)
+    const r = e.rotationRate;
+    if(r && r.alpha!==null){
+      const yaw = dot([r.beta||0, r.gamma||0, r.alpha||0], norm(gs));
+      yawLP += .3*(yaw-yawLP);
+      if(yawRec){ if(Math.abs(yawLP)>Math.abs(yawRec.peak)) yawRec.peak=yawLP; }
+      else if(cal && state==='ground' && now-lastTurn>800 && Math.abs(yawLP)>cal.yawThr){
+        lastTurn=now; turns++; $('turns').textContent=turns;
+        send({t:'turn', dir: Math.sign(yawLP)===cal.yawSign ? 'right' : 'left'});
+      }
+    }
+  });
+
+  // Yana yatma ve çömelme: 20 Hz gönderim
+  setInterval(() => {
+    if(!cal) return;
+    const v=norm(gs), now=performance.now();
+    let lean = clamp(angleToward(v,cal.u0,cal.rDir)/cal.thR, -1.5, 1.5);
+    const cr = clamp(angleToward(v,cal.u0,cal.cDir)/cal.thC, -1, 1.5);
+    if(Math.abs(lean) < .25) lean = 0;
+    if(!crouching && cr>.6){ if(!crouchSince) crouchSince=now; if(now-crouchSince>250) crouching=true; }
+    else if(cr<=.6) crouchSince=0;
+    if(crouching && cr<.35) crouching=false;
+    const lb=$('leanBar'); lb.style.left = (50+Math.min(0,lean)*33)+'%'; lb.style.width = Math.abs(lean)*33+'%';
+    $('crouchBar').style.left='0'; $('crouchBar').style.width = clamp(cr,0,1)*100+'%';
+    send({t:'pose', lean, crouch: crouching?1:0});
+  }, 50);
+}
+</script>
+</body>
+</html>
